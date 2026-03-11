@@ -1,0 +1,93 @@
+name: 每日股票分析(精简版)
+
+on:
+  # 定时触发 - 每天北京时间 18:00 (UTC 10:00)
+  schedule:
+    - cron: '0 10 * * 1-5'
+  
+  # 允许在 GitHub Actions 网页上手动点击运行
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: '强制执行（跳过节假日/周末检查）'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: 检出当前代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python 3.11 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 安装项目依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 创建输出文件夹
+        run: mkdir -p data logs reports
+      
+      - name: 执行股票分析任务
+        env:
+          # ==========================================
+          # 1. AI 模型配置 (下面三个任选其一在 GitHub Secrets 配置即可)
+          # ==========================================
+          #AIHUBMIX_KEY: ${{ secrets.AIHUBMIX_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          #OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          #OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+
+          # ==========================================
+          # 2. 搜索服务 (强烈推荐，用于获取新闻事件)
+          # ==========================================
+          TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
+
+          # ==========================================
+          # 3. 通知渠道配置 (这里以企业微信和邮箱为例，你可以在 Secrets 中填入你需要的)
+          # ==========================================
+          #WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          #EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+          #TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          #TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          # ==========================================
+          # 4. 股票列表与分析模式 (必填)
+          # ==========================================
+          # 从 Secrets 读取用户自定义的主力关注股票，如果没有配置，默认分析茅台
+          STOCK_LIST: ${{ secrets.STOCK_LIST || 'AMD' }}
+          
+        run: |
+          echo "=========================================="
+          echo "🚀 开始运行 A股智能分析系统 (精简 Actions 版)"
+          echo "=========================================="
+          
+          # 判断是否强制执行
+          FORCE_RUN_ARG=""
+          if [ "${{ github.event.inputs.force_run }}" = "true" ]; then
+            FORCE_RUN_ARG="--force-run"
+            echo "⚡ 已开启强制执行模式！"
+          fi
+
+          python main.py $FORCE_RUN_ARG
+      
+      - name: 保存分析日志与报告以便下载
+        uses: actions/upload-artifact@v4
+        if: always() # 无论成功失败都会上传日志
+        with:
+          name: analysis-reports
+          path: |
+            reports/
+            logs/
+          retention-days: 7
